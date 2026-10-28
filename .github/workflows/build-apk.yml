@@ -34,6 +34,10 @@ jobs:
           ./pmtiles extract "https://build.protomaps.com/$KEY" www/culiacan.pmtiles --bbox=-107.55,24.68,-107.25,24.95 --maxzoom=15
           ls -lh www/culiacan.pmtiles
       - run: npx cap add android
+      - name: Permisos de ubicación
+        run: |
+          sed -i 's#<application#<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <application#' android/app/src/main/AndroidManifest.xml
+          grep -n "LOCATION" android/app/src/main/AndroidManifest.xml
       - run: npx cap sync android
       - run: |
           cd android
