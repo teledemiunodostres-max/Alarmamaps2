@@ -31,10 +31,12 @@ button{background:#d9322b;color:#fff;border:0;font-weight:600}button.s{backgroun
   <p id="pmsg" style="margin:0 0 12px;color:#556;white-space:pre-line">Permite el acceso a la ubicación para avisarte cuando llegues a tu destino.</p>
   <button id="pbtn">Permitir ubicación</button><button class="s" id="pskip" style="margin-top:8px">Ahora no</button>
  </div></div>
+<script>window.onerror=function(m,u,l){var p=document.getElementById('pmsg'),b=document.getElementById('perm');if(p&&b){p.textContent='Error: '+m+' (línea '+l+')';b.style.display='flex'}};</script>
 <script>
 const $=i=>document.getElementById(i);
 const NATIVE=!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());
-const BG=NATIVE?Capacitor.registerPlugin('BackgroundGeolocation'):null,LN=NATIVE?Capacitor.registerPlugin('LocalNotifications'):null;
+let BG=null,LN=null;
+try{if(NATIVE){BG=Capacitor.registerPlugin('BackgroundGeolocation');LN=Capacitor.registerPlugin('LocalNotifications')}}catch(e){}
 let denied=false,ka=null;
 const map=L.map('map',{zoomControl:false,maxZoom:18}).setView([24.8091,-107.394],13);
 const online=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
@@ -64,9 +66,9 @@ function gpsErr(e){if(e&&(e.code===1||e.code==='NOT_AUTHORIZED')){permErr({code:
 async function track(){
  if(busy){again=true;return}busy=true;denied=false;
  try{
-  if(wid!==null){try{NATIVE?await BG.removeWatcher({id:wid}):navigator.geolocation.clearWatch(wid)}catch(e){}wid=null}
+  if(wid!==null){try{BG?await BG.removeWatcher({id:wid}):navigator.geolocation.clearWatch(wid)}catch(e){}wid=null}
   $('pmsg').textContent='Esperando tu respuesta…';
-  if(NATIVE){
+  if(BG){
    try{await LN.requestPermissions();await LN.createChannel({id:'llegada',name:'Llegada al destino',importance:5,vibration:true})}catch(e){}
    const o={requestPermissions:true,stale:!active,distanceFilter:10};
    if(active){o.backgroundTitle='Alarma Destino';o.backgroundMessage='Vigilando tu llegada al destino…'}
