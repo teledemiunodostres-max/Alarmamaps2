@@ -33,7 +33,9 @@ button{background:#d9322b;color:#fff;border:0;font-weight:600}button.s{backgroun
  </div></div>
 <script>
 const $=i=>document.getElementById(i);
-const G=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Geolocation;
+const NATIVE=!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());
+const BG=NATIVE?Capacitor.registerPlugin('BackgroundGeolocation'):null,LN=NATIVE?Capacitor.registerPlugin('LocalNotifications'):null;
+let denied=false,ka=null;
 const map=L.map('map',{zoomControl:false,maxZoom:18}).setView([24.8091,-107.394],13);
 const online=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
 let base=online;
@@ -53,24 +55,26 @@ function upd(){if(!dest)return;if(!me){$('dist').textContent='Destino fijado';re
 function onPos(p){$('perm').style.display='none';if(/^(Buscando|Sin señal)/.test($('st').textContent))$('st').textContent=active?'Vigilando…':'';me=[p.coords.latitude,p.coords.longitude];
  if(!meMk)meMk=L.circleMarker(me,{radius:8,color:'#fff',weight:3,fillColor:'#1a73e8',fillOpacity:1}).addTo(map);else meMk.setLatLng(me);
  if(first){first=false;map.setView(me,15)}upd()}
-function permErr(e){wid=null;$('perm').style.display='flex';
+function permErr(e){denied=true;$('perm').style.display='flex';
  $('pmsg').textContent=e&&e.code===1?'El permiso está bloqueado.\nVe a Ajustes → Apps → Alarma Destino → Permisos → Ubicación → “Permitir” (precisa). Luego vuelve a abrir la app.':'No se detecta el GPS. Activa la ubicación del teléfono en alta precisión y sal a un lugar abierto.';
  $('pbtn').textContent='Intentar de nuevo'}
-let busy=false;
-function gpsErr(e){if(e&&e.code===1){permErr(e);return}
+let busy=false,again=false;
+function gpsErr(e){if(e&&(e.code===1||e.code==='NOT_AUTHORIZED')){permErr({code:1});return}
  $('st').textContent='Sin señal GPS, reintentando…';setTimeout(track,5000)}
 async function track(){
- if(busy)return;busy=true;
+ if(busy){again=true;return}busy=true;denied=false;
  try{
-  if(wid!==null){try{G?await G.clearWatch({id:wid}):navigator.geolocation.clearWatch(wid)}catch(e){}wid=null}
+  if(wid!==null){try{NATIVE?await BG.removeWatcher({id:wid}):navigator.geolocation.clearWatch(wid)}catch(e){}wid=null}
   $('pmsg').textContent='Esperando tu respuesta…';
-  if(G){const r=await G.requestPermissions();
-   if(r.location==='denied'&&r.coarseLocation==='denied'){permErr({code:1});return}
-   $('perm').style.display='none';$('st').textContent='Buscando ubicación…';
-   try{onPos(await G.getCurrentPosition({enableHighAccuracy:false,timeout:15000}))}catch(e){}
-   wid=await G.watchPosition({enableHighAccuracy:true,timeout:30000},(p,e)=>{if(p)onPos(p);else gpsErr(e||{})})}
+  if(NATIVE){
+   try{await LN.requestPermissions();await LN.createChannel({id:'llegada',name:'Llegada al destino',importance:5,vibration:true})}catch(e){}
+   const o={requestPermissions:true,stale:!active,distanceFilter:10};
+   if(active){o.backgroundTitle='Alarma Destino';o.backgroundMessage='Vigilando tu llegada al destino…'}
+   wid=await BG.addWatcher(o,(p,e)=>{if(p)onPos({coords:p});else gpsErr(e||{})});
+   if(!denied){$('perm').style.display='none';if(!me&&!active)$('st').textContent='Buscando ubicación…'}}
   else{$('perm').style.display='none';wid=navigator.geolocation.watchPosition(onPos,gpsErr,{enableHighAccuracy:true,timeout:30000,maximumAge:0})}
- }catch(e){permErr({code:1})}finally{busy=false}}
+ }catch(e){permErr({code:1})}finally{busy=false;if(again){again=false;track()}}}
+function keep(on){try{if(on&&!ka){const a=ctx(),o=a.createOscillator(),g=a.createGain();g.gain.value=.001;o.frequency.value=40;o.connect(g).connect(a.destination);o.start();ka=o}else if(!on&&ka){ka.stop();ka=null}}catch(e){}}
 $('pbtn').onclick=track;$('pskip').onclick=()=>{$('perm').style.display='none'};
 $('loc').onclick=()=>{if(me)map.setView(me,16);else{$('perm').style.display='flex';track()}};
 $('sb').onclick=async()=>{const q=$('q').value.trim(),m=q.match(/^(-?\d+\.?\d*)\s*[, ]\s*(-?\d+\.?\d*)$/);if(!q)return;
@@ -85,14 +89,15 @@ $('tone').onchange=()=>{if($('tone').value==='archivo')$('file').click()};
 $('file').onchange=e=>{const f=e.target.files[0];if(f){fileAudio=new Audio(URL.createObjectURL(f));fileAudio.loop=true}else $('tone').value='sirena'};
 function ring(){if(ringing)return;ringing=true;const t=$('tone').value;ctx();
  if(t==='archivo'&&fileAudio)fileAudio.play();else{let k=0;tmr=setInterval(()=>{k++;t==='sirena'?beep(k%2?900:1400,.45,'square'):t==='pitido'?beep(2000,.12,'square'):beep(660,.9,'sine');navigator.vibrate&&navigator.vibrate(300)},t==='pitido'?220:t==='campana'?1000:500)}
- $('stop').style.display='block';$('st').textContent='🔔 ¡Llegando!'}
+ $('stop').style.display='block';$('st').textContent='🔔 ¡Llegando!';
+ if(LN)try{LN.schedule({notifications:[{id:1,title:'¡Llegando a tu destino!',body:'Entraste al radio que elegiste',channelId:'llegada'}]})}catch(e){}}
 function silence(){ringing=false;clearInterval(tmr);if(fileAudio){fileAudio.pause();fileAudio.currentTime=0}$('stop').style.display='none';$('st').textContent=active?'Vigilando…':''}
 $('stop').onclick=()=>{silence();if(active)$('go').click()};$('test').onclick=ring;
 $('go').onclick=async()=>{
  if(!active){if(!dest){alert('Toca el mapa para elegir destino');return}
-  ctx();active=true;$('go').textContent='Desactivar';$('st').textContent='Vigilando…';
+  ctx();keep(true);active=true;$('go').textContent='Desactivar';$('st').textContent='Vigilando…';
   try{wl=await navigator.wakeLock.request('screen')}catch(e){}track();upd()}
- else{active=false;$('go').textContent='Activar';try{wl&&wl.release()}catch(e){}silence()}};
+ else{active=false;keep(false);$('go').textContent='Activar';try{wl&&wl.release()}catch(e){}silence();track()}};
 try{const s=JSON.parse(localStorage.getItem('dest'));if(s){setDest(s[0],s[1]);map.setView(s,14)}}catch(e){}
 track();
 </script></body></html>
