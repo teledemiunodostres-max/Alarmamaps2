@@ -49,6 +49,7 @@ jobs:
           if [ -z "$AAPT" ]; then echo "aapt2 no encontrado, se omite la verificación"; exit 0; fi
           $AAPT dump permissions android/app/build/outputs/apk/debug/app-debug.apk | tee perms.txt
           grep -q ACCESS_FINE_LOCATION perms.txt
+          grep -q FOREGROUND_SERVICE_LOCATION perms.txt
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ github.run_number }}
